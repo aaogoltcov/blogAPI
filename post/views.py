@@ -1,10 +1,27 @@
-from django.db.models import Max
 from rest_framework import generics
 from rest_framework.authentication import SessionAuthentication, BasicAuthentication
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from post.models import Post, Comment
 from post.serializer import PostSerializer, CommentCreateSerializer, CommentViewSerializer
+
+
+def generate_dict_of_comments(db_query, level=None):
+    new_list_of_dicts = []
+
+    def generate_comments_layers(current_layer, source):
+        current_layer['child'] = []
+        for _ in source:
+            if _['parent'] == current_layer['id'] and (level is None or _['level'] <= level):
+                current_layer['child'].append(_)
+                generate_comments_layers(current_layer['child'][-1], source)
+
+    for _ in db_query:
+        if _['parent'] is None:
+            new_list_of_dicts.append(_)
+            generate_comments_layers(_, db_query)
+
+    return new_list_of_dicts
 
 
 class PostList(generics.ListAPIView):
@@ -70,14 +87,15 @@ class CommentList(generics.ListAPIView):
     serializer_class = CommentViewSerializer
 
     def list(self, request, *args, **kwargs):
-        comment_list = Comment.objects.filter(post=kwargs['pk'])
-        comment_tree = comment_list.filter(level=comment_list.aggregate(Max('level'))['level__max'])
-        return Response(CommentViewSerializer(comment_tree, many=True).data)
+        all_comments_for_post = CommentViewSerializer(Comment.objects.filter(post=kwargs['pk']), many=True).data
+        new_list_of_comments_of_post = generate_dict_of_comments(all_comments_for_post)
+        return Response(new_list_of_comments_of_post)
 
 
 class CommentListMaxLevel(generics.ListAPIView):
     """
-    COMMENT LIST MAX LEVEL - получение информации о всех комментариях для выбранного поста не выше указанного уровня
+    COMMENT LIST MAX LEVEL - получение информации о всех комментариях для выбранного поста
+    не выше указанного уровня
     """
     authentication_classes = [SessionAuthentication, BasicAuthentication]
     permission_classes = [IsAuthenticated]
@@ -85,8 +103,9 @@ class CommentListMaxLevel(generics.ListAPIView):
     serializer_class = CommentViewSerializer
 
     def list(self, request, *args, **kwargs):
-        level_max = Comment.objects.filter(post=kwargs['pk']).filter(level=kwargs['pk_sub'])
-        return Response(CommentViewSerializer(level_max, many=True).data)
+        all_comments_for_post = CommentViewSerializer(Comment.objects.filter(post=kwargs['pk']), many=True).data
+        new_list_of_comments_of_post = generate_dict_of_comments(all_comments_for_post, kwargs['pk_sub'])
+        return Response(new_list_of_comments_of_post)
 
 
 class AllCommentsWithLevel(generics.ListAPIView):
@@ -100,5 +119,6 @@ class AllCommentsWithLevel(generics.ListAPIView):
     serializer_class = CommentViewSerializer
 
     def list(self, request, *args, **kwargs):
-        level_comment = Comment.objects.filter(level=kwargs['pk'])
-        return Response(CommentViewSerializer(level_comment, many=True).data)
+        all_comments_for_post = CommentViewSerializer(Comment.objects.all(), many=True).data
+        new_list_of_comments_of_post = generate_dict_of_comments(all_comments_for_post, kwargs['pk'])
+        return Response(new_list_of_comments_of_post)

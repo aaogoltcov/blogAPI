@@ -1,5 +1,4 @@
 from rest_framework import serializers
-
 from post.models import Post, Comment
 
 
@@ -76,6 +75,3 @@ class CommentViewSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'date': {'read_only': True},
         }
-
-
-CommentViewSerializer._declared_fields['parent'] = CommentViewSerializer()
